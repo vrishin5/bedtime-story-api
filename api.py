@@ -1,0 +1,128 @@
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
+from openai import OpenAI
+from dotenv import load_dotenv
+from gtts import gTTS
+import os
+import uuid
+
+# --- Load environment variables ---
+load_dotenv()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# --- Initialize FastAPI app ---
+app = FastAPI(
+    title="Bedtime Story Generator API",
+    description="Backend API for the Bedtime Story App",
+    version="1.0.0"
+)
+
+# --- Pydantic request models ---
+class StoryRequest(BaseModel):
+    user_input: str
+    child_age: str
+    story_duration: str
+
+class AnalyzeRequest(BaseModel):
+    user_input: str
+
+class TTSRequest(BaseModel):
+    story_text: str
+
+
+# --- Helper function: generate story ---
+def generate_story(user_input: str, child_age: str, story_duration: str) -> str:
+    """Generate a bedtime story directly from user input."""
+    prompt = f"""
+    You are a warm and creative storyteller who writes bedtime stories for children aged {child_age}.
+    
+    The user described what they want in a story as follows:
+    "{user_input}"
+
+    Please write a complete bedtime story that:
+    - Reflects the user's idea or request.
+    - Is suitable for a child aged {child_age}.
+    - Takes about {story_duration} to read aloud.
+    - Has a clear beginning, middle, and comforting happy ending.
+    - Is imaginative, gentle, and emotionally expressive.
+    - Includes a soft moral or life lesson.
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.9
+        )
+        story = response.choices[0].message.content.strip()
+        return story
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Story generation failed: {str(e)}")
+
+
+# --- Helper function: text-to-speech ---
+def text_to_speech(story_text: str) -> str:
+    """Convert story text to speech (MP3) using gTTS."""
+    try:
+        filename = f"story_{uuid.uuid4().hex}.mp3"
+        tts = gTTS(story_text, lang="en", slow=False)
+        tts.save(filename)
+        return filename
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"TTS generation failed: {str(e)}")
+
+
+# --- Endpoint: Analyze Request (optional) ---
+@app.post("/analyze_request")
+async def analyze_request(request: AnalyzeRequest):
+    """Analyze user input to detect category, movie references, etc."""
+    system_prompt = """
+    You are a helpful assistant that analyzes children's story requests.
+    For the given user request, extract:
+    - category (fantasy, fairy tale, adventure, friendship, animals, courage, comedy, or general)
+    - main character’s name (if given)
+    - setting or world (if relevant)
+    - detect if the character is from a known movie, show, or story universe (like Disney, Marvel, Pixar, etc.)
+    Respond ONLY in JSON format like:
+    {"category": "fantasy", "character": "Elsa", "setting": "Arendelle", "from_movie": true}
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": request.user_input}
+            ],
+            temperature=0.3
+        )
+        return JSONResponse(content=response.choices[0].message.content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
+# --- Endpoint: Generate Story ---
+@app.post("/generate_story")
+async def create_story(request: StoryRequest):
+    """Create a bedtime story from user input."""
+    story = generate_story(request.user_input, request.child_age, request.story_duration)
+    return {"story": story}
+
+
+# --- Endpoint: Text to Speech ---
+@app.post("/tts")
+async def create_tts(request: TTSRequest):
+    """Convert story text to speech and return the MP3 file."""
+    filename = text_to_speech(request.story_text)
+    return FileResponse(
+        path=filename,
+        media_type="audio/mpeg",
+        filename=filename
+    )
+
+
+# --- Root Endpoint ---
+@app.get("/")
+async def root():
+    return {"message": "🌙 Bedtime Story API is running!"}
