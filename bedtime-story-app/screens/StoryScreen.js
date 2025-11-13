@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, ScrollView, Button, StyleSheet, ActivityIndicator } from "react-native";
 import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy"; // ✅ legacy import for Expo SDK ≤53
 import axios from "axios";
 import { encode } from "base64-arraybuffer";
 
@@ -17,20 +17,29 @@ export default function StoryScreen({ route, navigation }) {
     try {
       setLoading(true);
 
-      // Fetch audio as binary data
+      // ✅ Ensure iOS plays sound even in silent mode
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: false,
+        playsInSilentModeIOS: true, // 🔊 This enables playback even when phone is on silent
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+
+      // Fetch TTS audio from backend
       const res = await axios.post(
         `${BASE_URL}/tts`,
         { story_text: story },
         { responseType: "arraybuffer" }
       );
 
-      // Convert to base64 string
+      // Convert binary → base64
       const base64Audio = encode(res.data);
 
-      // ✅ Correctly write base64 to file using plain string flag
+      // Save audio as temporary MP3 file
       const fileUri = FileSystem.cacheDirectory + "story.mp3";
       await FileSystem.writeAsStringAsync(fileUri, base64Audio, {
-        encoding: "base64", // use plain string, not FileSystem.EncodingType
+        encoding: FileSystem.EncodingType.Base64,
       });
 
       // Load and play the audio file
@@ -70,12 +79,12 @@ export default function StoryScreen({ route, navigation }) {
         )}
       </View>
 
-      {/* Story text below */}
+      {/* Story text */}
       <ScrollView style={styles.storyContainer}>
         <Text style={styles.storyText}>{story}</Text>
       </ScrollView>
 
-      {/* Back button at the bottom */}
+      {/* Back button */}
       <View style={styles.backButton}>
         <Button title="🔙 Back to Home" onPress={() => navigation.navigate("Home")} />
       </View>
