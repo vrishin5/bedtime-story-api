@@ -1,58 +1,77 @@
-import React, { useState } from "react";
-import { View, Text, ScrollView, Button, StyleSheet, ActivityIndicator } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { View, Text, ScrollView, Button, StyleSheet, ActivityIndicator, Animated } from "react-native";
 import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system/legacy"; // ✅ legacy import for Expo SDK ≤53
+import * as FileSystem from "expo-file-system/legacy";
 import axios from "axios";
 import { encode } from "base64-arraybuffer";
+import Background from "../components/Background";
+import { colors, typography } from "./theme";
 
-const BASE_URL = "https://bedtime-story-api-tdhc.onrender.com"; // your deployed backend
+const BASE_URL = "https://bedtime-story-api-tdhc.onrender.com";
 
 export default function StoryScreen({ route, navigation }) {
   const { story } = route.params;
   const [sound, setSound] = useState(null);
+  const [bgSound, setBgSound] = useState(null);
   const [loading, setLoading] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const fade = useRef(new Animated.Value(0)).current;
 
-  const playAudio = async () => {
+  // Fade-in story text
+  useEffect(() => {
+    Animated.timing(fade, { toValue: 1, duration: 800, useNativeDriver: true }).start();
+  }, []);
+
+  // Ambient background loop
+  useEffect(() => {
+    (async () => {
+      try {
+        const { sound: s } = await Audio.Sound.createAsync(
+          require("../assets/audio/night_ambience.mp3"),
+          { isLooping: true, volume: 0.15 }
+        );
+        setBgSound(s);
+        await s.playAsync();
+      } catch {}
+    })();
+    return () => { bgSound?.unloadAsync(); sound?.unloadAsync(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const playOrPauseAudio = async () => {
     try {
-      setLoading(true);
+      if (sound) {
+        if (playing && !paused) { await sound.pauseAsync(); setPaused(true); return; }
+        if (paused) { await sound.playAsync(); setPaused(false); return; }
+      }
 
-      // ✅ Ensure iOS plays sound even in silent mode
+      setLoading(true);
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         staysActiveInBackground: false,
-        playsInSilentModeIOS: true, // 🔊 This enables playback even when phone is on silent
+        playsInSilentModeIOS: true,
         shouldDuckAndroid: true,
         playThroughEarpieceAndroid: false,
       });
 
-      // Fetch TTS audio from backend
-      const res = await axios.post(
-        `${BASE_URL}/tts`,
-        { story_text: story },
-        { responseType: "arraybuffer" }
-      );
-
-      // Convert binary → base64
+      const res = await axios.post(`${BASE_URL}/tts`, { story_text: story }, { responseType: "arraybuffer" });
       const base64Audio = encode(res.data);
 
-      // Save audio as temporary MP3 file
       const fileUri = FileSystem.cacheDirectory + "story.mp3";
       await FileSystem.writeAsStringAsync(fileUri, base64Audio, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      // Load and play the audio file
-      const { sound: newSound } = await Audio.Sound.createAsync({ uri: fileUri });
+      const { sound: newSound } = await Audio.Sound.createAsync({ uri: fileUri }, { volume: 0.95 });
       setSound(newSound);
       setLoading(false);
       setPlaying(true);
+      setPaused(false);
 
       await newSound.playAsync();
       newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.didJustFinish) {
-          setPlaying(false);
-        }
+        if (status.didJustFinish) { setPlaying(false); setPaused(false); }
       });
     } catch (err) {
       setLoading(false);
@@ -61,42 +80,62 @@ export default function StoryScreen({ route, navigation }) {
     }
   };
 
+  const stopAudio = async () => {
+    if (sound) {
+      await sound.stopAsync();
+      setPlaying(false);
+      setPaused(false);
+    }
+  };
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>📖 Your Bedtime Story</Text>
+    <Background>
+      <View style={styles.container}>
+        <Text style={styles.title}>📖 Your Bedtime Story</Text>
 
-      {/* 🎧 Audio button at the top */}
-      <View style={styles.audioButtonContainer}>
-        {loading ? (
-          <ActivityIndicator size="large" color="#6C63FF" />
-        ) : (
-          <Button
-            title={playing ? "⏸️ Playing..." : "🎧 Listen to Story"}
-            onPress={playAudio}
-            disabled={playing}
-            color="#6C63FF"
-          />
-        )}
+        <View style={styles.audioRow}>
+          {loading ? (
+            <ActivityIndicator size="large" color={colors.primary} />
+          ) : (
+            <>
+              <Button
+                title={playing ? (paused ? "▶️ Resume Story" : "⏸️ Pause Story") : "🎧 Listen to Story"}
+                onPress={playOrPauseAudio}
+                color={colors.primary}
+              />
+              {playing && (
+                <View style={{ marginTop: 10 }}>
+                  <Button title="⏹️ Stop" onPress={stopAudio} color="#E57373" />
+                </View>
+              )}
+            </>
+          )}
+        </View>
+
+        <Animated.View style={{ flex: 1, opacity: fade }}>
+          <ScrollView contentContainerStyle={styles.storyWrap}>
+            <Text style={styles.storyText}>{story}</Text>
+          </ScrollView>
+        </Animated.View>
+
+        <View style={{ marginBottom: 12 }}>
+          <Button title="🔙 Back to Home" onPress={() => navigation.navigate("Home")} />
+        </View>
       </View>
-
-      {/* Story text */}
-      <ScrollView style={styles.storyContainer}>
-        <Text style={styles.storyText}>{story}</Text>
-      </ScrollView>
-
-      {/* Back button */}
-      <View style={styles.backButton}>
-        <Button title="🔙 Back to Home" onPress={() => navigation.navigate("Home")} />
-      </View>
-    </View>
+    </Background>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#fff" },
-  title: { fontSize: 24, fontWeight: "bold", marginBottom: 10, textAlign: "center" },
-  audioButtonContainer: { alignItems: "center", marginBottom: 15 },
-  storyContainer: { flex: 1, marginBottom: 20 },
-  storyText: { fontSize: 16, lineHeight: 24, color: "#333" },
-  backButton: { marginBottom: 20 },
+  container: { flex: 1, padding: 18 },
+  title: {
+    color: colors.text, fontSize: typography.h1, fontWeight: "700",
+    textAlign: "center", marginBottom: 8
+  },
+  audioRow: { alignItems: "center", marginBottom: 12 },
+  storyWrap: { paddingBottom: 28 },
+  storyText: {
+    color: colors.text, fontSize: typography.body, lineHeight: typography.lineHeight + 4,
+    backgroundColor: colors.card, padding: 16, borderRadius: 14, borderWidth: 1, borderColor: colors.border
+  },
 });
