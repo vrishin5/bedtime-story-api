@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Button, StyleSheet, ActivityIndicator } from "r
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
 import axios from "axios";
+import { encode } from "base64-arraybuffer"; // ✅ new import
 
 const BASE_URL = "https://bedtime-story-api-tdhc.onrender.com"; // your deployed backend
 
@@ -16,23 +17,23 @@ export default function StoryScreen({ route, navigation }) {
     try {
       setLoading(true);
 
-      // Fetch audio from the backend
+      // Fetch audio from backend as binary
       const res = await axios.post(
         `${BASE_URL}/tts`,
         { story_text: story },
         { responseType: "arraybuffer" }
       );
 
-      // Convert ArrayBuffer to base64 string
-      const base64Audio = Buffer.from(res.data, "binary").toString("base64");
+      // ✅ Convert ArrayBuffer to base64 using base64-arraybuffer
+      const base64Audio = encode(res.data);
 
-      // Create a temporary local file for playback
+      // Save audio to temporary file
       const fileUri = FileSystem.cacheDirectory + "story.mp3";
       await FileSystem.writeAsStringAsync(fileUri, base64Audio, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      // Load and play audio
+      // Load and play the saved file
       const { sound: newSound } = await Audio.Sound.createAsync({ uri: fileUri });
       setSound(newSound);
       setLoading(false);
