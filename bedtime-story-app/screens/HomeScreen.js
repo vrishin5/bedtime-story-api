@@ -14,7 +14,7 @@ import {
 import { Picker } from "@react-native-picker/picker";
 import axios from "axios";
 
-const BASE_URL = "http://127.0.0.1:8000"; // change to your backend URL when deployed
+const BASE_URL = "https://bedtime-story-api-tdhc.onrender.com";
 
 export default function HomeScreen({ navigation }) {
   const [age, setAge] = useState("5–8");

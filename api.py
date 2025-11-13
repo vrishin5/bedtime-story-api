@@ -24,9 +24,6 @@ class StoryRequest(BaseModel):
     child_age: str
     story_duration: str
 
-class AnalyzeRequest(BaseModel):
-    user_input: str
-
 class TTSRequest(BaseModel):
     story_text: str
 
@@ -71,36 +68,6 @@ def text_to_speech(story_text: str) -> str:
         return filename
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"TTS generation failed: {str(e)}")
-
-
-# --- Endpoint: Analyze Request (optional) ---
-@app.post("/analyze_request")
-async def analyze_request(request: AnalyzeRequest):
-    """Analyze user input to detect category, movie references, etc."""
-    system_prompt = """
-    You are a helpful assistant that analyzes children's story requests.
-    For the given user request, extract:
-    - category (fantasy, fairy tale, adventure, friendship, animals, courage, comedy, or general)
-    - main character’s name (if given)
-    - setting or world (if relevant)
-    - detect if the character is from a known movie, show, or story universe (like Disney, Marvel, Pixar, etc.)
-    Respond ONLY in JSON format like:
-    {"category": "fantasy", "character": "Elsa", "setting": "Arendelle", "from_movie": true}
-    """
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": request.user_input}
-            ],
-            temperature=0.3
-        )
-        return JSONResponse(content=response.choices[0].message.content)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
-
 
 # --- Endpoint: Generate Story ---
 @app.post("/generate_story")
