@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, ScrollView, Button, StyleSheet, ActivityIndicator } from "react-native";
 import { Audio } from "expo-av";
+import * as FileSystem from "expo-file-system";
 import axios from "axios";
 
 const BASE_URL = "https://bedtime-story-api-tdhc.onrender.com"; // your deployed backend
@@ -11,28 +12,34 @@ export default function StoryScreen({ route, navigation }) {
   const [loading, setLoading] = useState(false);
   const [playing, setPlaying] = useState(false);
 
-  // Fetch and play audio from your FastAPI /tts endpoint
   const playAudio = async () => {
     try {
       setLoading(true);
+
+      // Fetch audio from the backend
       const res = await axios.post(
         `${BASE_URL}/tts`,
         { story_text: story },
         { responseType: "arraybuffer" }
       );
 
-      // Convert binary data to a playable audio file
-      const blob = new Blob([res.data], { type: "audio/mpeg" });
-      const soundObj = new Audio.Sound();
-      const audioUri = URL.createObjectURL(blob);
+      // Convert ArrayBuffer to base64 string
+      const base64Audio = Buffer.from(res.data, "binary").toString("base64");
 
-      await soundObj.loadAsync({ uri: audioUri });
-      setSound(soundObj);
+      // Create a temporary local file for playback
+      const fileUri = FileSystem.cacheDirectory + "story.mp3";
+      await FileSystem.writeAsStringAsync(fileUri, base64Audio, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Load and play audio
+      const { sound: newSound } = await Audio.Sound.createAsync({ uri: fileUri });
+      setSound(newSound);
       setLoading(false);
       setPlaying(true);
-      await soundObj.playAsync();
 
-      soundObj.setOnPlaybackStatusUpdate((status) => {
+      await newSound.playAsync();
+      newSound.setOnPlaybackStatusUpdate((status) => {
         if (status.didJustFinish) {
           setPlaying(false);
         }
@@ -78,20 +85,8 @@ export default function StoryScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: "#fff" },
   title: { fontSize: 24, fontWeight: "bold", marginBottom: 10, textAlign: "center" },
-  audioButtonContainer: {
-    alignItems: "center",
-    marginBottom: 15,
-  },
-  storyContainer: {
-    flex: 1,
-    marginBottom: 20,
-  },
-  storyText: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: "#333",
-  },
-  backButton: {
-    marginBottom: 20,
-  },
+  audioButtonContainer: { alignItems: "center", marginBottom: 15 },
+  storyContainer: { flex: 1, marginBottom: 20 },
+  storyText: { fontSize: 16, lineHeight: 24, color: "#333" },
+  backButton: { marginBottom: 20 },
 });
