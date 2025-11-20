@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -18,7 +18,10 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# --- Pydantic request models ---
+# --- Ensure audio directory exists ---
+os.makedirs("audio", exist_ok=True)
+
+# --- Request models ---
 class StoryRequest(BaseModel):
     user_input: str
     child_age: str
@@ -28,9 +31,8 @@ class TTSRequest(BaseModel):
     story_text: str
 
 
-# --- Helper function: generate story ---
+# --- Generate Story ---
 def generate_story(user_input: str, child_age: str, story_duration: str) -> str:
-    """Generate a bedtime story directly from user input."""
     prompt = f"""
     You are a warm and creative storyteller who writes bedtime stories for children aged {child_age}.
     
@@ -38,12 +40,13 @@ def generate_story(user_input: str, child_age: str, story_duration: str) -> str:
     "{user_input}"
 
     Please write a complete bedtime story that:
-    - Reflects the user's idea or request.
+    - Reflects the user's request.
     - Is suitable for a child aged {child_age}.
     - Takes about {story_duration} to read aloud.
     - Has a clear beginning, middle, and comforting happy ending.
-    - Is imaginative, gentle, and emotionally expressive.
-    - Includes a soft moral or life lesson.
+    - Is imaginative, gentle, emotional, and expressive.
+    - Includes a soft moral.
+    - Do NOT use asterisks.
     """
 
     try:
@@ -52,44 +55,48 @@ def generate_story(user_input: str, child_age: str, story_duration: str) -> str:
             messages=[{"role": "user", "content": prompt}],
             temperature=0.9
         )
-        story = response.choices[0].message.content.strip()
-        return story
+        return response.choices[0].message.content.strip()
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Story generation failed: {str(e)}")
+        raise HTTPException(500, f"Story generation failed: {str(e)}")
 
 
-# --- Helper function: text-to-speech ---
+# --- Text-to-Speech ---
 def text_to_speech(story_text: str) -> str:
-    """Convert story text to speech (MP3) using gTTS."""
     try:
         filename = f"story_{uuid.uuid4().hex}.mp3"
-        tts = gTTS(story_text, lang="en", slow=False)
-        tts.save(filename)
-        return filename
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"TTS generation failed: {str(e)}")
+        filepath = os.path.join("audio", filename)
 
-# --- Endpoint: Generate Story ---
+        tts = gTTS(text=story_text, lang="en")
+        tts.save(filepath)
+
+        return filename
+
+    except Exception as e:
+        raise HTTPException(500, f"TTS generation failed: {str(e)}")
+
+
+# --- API Endpoints ---
 @app.post("/generate_story")
 async def create_story(request: StoryRequest):
-    """Create a bedtime story from user input."""
     story = generate_story(request.user_input, request.child_age, request.story_duration)
     return {"story": story}
 
 
-# --- Endpoint: Text to Speech ---
 @app.post("/tts")
 async def create_tts(request: TTSRequest):
-    """Convert story text to speech and return the MP3 file."""
     filename = text_to_speech(request.story_text)
-    return FileResponse(
-        path=filename,
-        media_type="audio/mpeg",
-        filename=filename
-    )
+    return {"filename": filename}
 
 
-# --- Root Endpoint ---
+@app.get("/audio/{filename}")
+async def serve_audio(filename: str):
+    filepath = os.path.join("audio", filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(404, "Audio file not found")
+    return FileResponse(filepath, media_type="audio/mpeg")
+
+
 @app.get("/")
 async def root():
     return {"message": "🌙 Bedtime Story API is running!"}

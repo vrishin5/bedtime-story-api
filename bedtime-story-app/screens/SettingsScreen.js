@@ -1,90 +1,167 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
+  ScrollView,
   SafeAreaView,
   TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
-
+import { Audio } from "expo-av";
+import axios from "axios";
 import Background from "../components/Background";
 import { colors, typography } from "./theme";
 
-export default function SettingsScreen({ navigation }) {
-  const [voice, setVoice] = useState("female");
+const BASE_URL = "https://bedtime-story-api-tdhc.onrender.com";
+
+export default function StoryScreen({ route, navigation }) {
+  const { story } = route.params;
+
+  const [sound, setSound] = useState(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [loadingAudio, setLoadingAudio] = useState(false);
+
+  useEffect(() => {
+    Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      allowsRecordingIOS: false,
+      staysActiveInBackground: false,
+    });
+
+    return () => {
+      if (sound) sound.unloadAsync();
+    };
+  }, [sound]);
+
+  const startPlayback = async () => {
+    try {
+      setLoadingAudio(true);
+
+      // 1. Request TTS file
+      const res = await axios.post(`${BASE_URL}/tts`, {
+        story_text: story,
+      });
+
+      const filename = res.data?.filename;
+      if (!filename) throw new Error("No filename returned");
+
+      // 2. Build full URL
+      const audioUrl = `${BASE_URL}/audio/${filename}`;
+
+      // 3. Load the audio file
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: audioUrl },
+        { shouldPlay: true }
+      );
+
+      setSound(newSound);
+      setIsPlaying(true);
+
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.didJustFinish) {
+          setIsPlaying(false);
+        }
+      });
+    } catch (err) {
+      console.log("Audio error:", err);
+      alert("Could not load the audio.");
+    } finally {
+      setLoadingAudio(false);
+    }
+  };
+
+  const togglePlayPause = async () => {
+    if (!sound) {
+      await startPlayback();
+      return;
+    }
+
+    const status = await sound.getStatusAsync();
+
+    if (status.isPlaying) {
+      await sound.pauseAsync();
+      setIsPlaying(false);
+    } else {
+      await sound.playAsync();
+      setIsPlaying(true);
+    }
+  };
 
   return (
     <Background>
-      <SafeAreaView style={styles.container}>
-        <Text style={styles.header}>Settings ⚙️</Text>
+      <SafeAreaView style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={styles.inner}>
+          <Text style={styles.header}>Your Story ✨</Text>
+          <Text style={styles.story}>{story}</Text>
 
-        <Text style={styles.label}>Voice Type</Text>
+          <View style={styles.buttonWrap}>
+            {loadingAudio ? (
+              <ActivityIndicator color={colors.primary} size="large" />
+            ) : (
+              <TouchableOpacity style={styles.playBtn} onPress={togglePlayPause}>
+                <Text style={styles.playBtnText}>
+                  {isPlaying ? "⏸ Pause" : "🔊 Listen to Story"}
+                </Text>
+              </TouchableOpacity>
+            )}
 
-        <TouchableOpacity
-          style={[
-            styles.option,
-            voice === "female" && styles.optionSelected,
-          ]}
-          onPress={() => setVoice("female")}
-        >
-          <Text style={styles.optionText}>Female Voice 🌙</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.option,
-            voice === "male" && styles.optionSelected,
-          ]}
-          onPress={() => setVoice("male")}
-        >
-          <Text style={styles.optionText}>Male Voice ⭐</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
-          <Text style={styles.backText}>← Back</Text>
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.backBtnText}>← Back</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     </Background>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
+  inner: {
+    padding: 22,
+  },
   header: {
     color: colors.text,
     fontFamily: typography.fontFamily,
     fontSize: 32,
+    marginBottom: 20,
     textAlign: "center",
-    marginBottom: 30,
   },
-  label: {
+  story: {
     color: colors.text,
     fontFamily: typography.fontFamily,
-    fontSize: 20,
-    marginBottom: 14,
+    fontSize: typography.body,
+    lineHeight: typography.lineHeight,
+    marginBottom: 40,
   },
-  option: {
-    backgroundColor: colors.card,
-    padding: 16,
+  buttonWrap: {
+    alignItems: "center",
+    gap: 18,
+    marginBottom: 40,
+  },
+  playBtn: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
     borderRadius: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
+    width: "80%",
   },
-  optionSelected: {
-    borderColor: colors.primary,
-    backgroundColor: "rgba(200,182,255,0.2)",
-  },
-  optionText: {
-    color: colors.text,
-    fontSize: 20,
-    fontFamily: typography.fontFamily,
-  },
-  back: { marginTop: 30 },
-  backText: {
-    color: colors.text,
-    fontFamily: typography.fontFamily,
-    fontSize: 20,
+  playBtnText: {
     textAlign: "center",
+    color: "#000",
+    fontFamily: typography.fontFamily,
+    fontSize: 20,
+    fontWeight: "600",
+  },
+  backBtn: {
+    paddingVertical: 10,
+  },
+  backBtnText: {
+    color: colors.text,
+    fontFamily: typography.fontFamily,
+    fontSize: 20,
   },
 });

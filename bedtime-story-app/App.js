@@ -8,42 +8,34 @@ import HomeScreen from "./screens/HomeScreen";
 import StoryScreen from "./screens/StoryScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 
+import { SettingsProvider } from "./context/SettingsContext";
+
 const Stack = createNativeStackNavigator();
 
 export default function App() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    async function loadResources() {
-      try {
-        await Font.loadAsync({
-          CenturySchoolbook: require("./assets/fonts/CenturySchoolbook.ttf"),
-        });
-      } catch (e) {
-        console.warn("Font loading error:", e);
-      } finally {
-        setReady(true);
-      }
+    async function load() {
+      await Font.loadAsync({
+        CenturySchoolbook: require("./assets/fonts/CenturySchoolbook.ttf"),
+      });
+      setReady(true);
     }
-
-    loadResources();
+    load();
   }, []);
 
-  // ⛔ Before fonts are loaded, render nothing
   if (!ready) return null;
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-          animation: "slide_from_right",
-        }}
-      >
-        <Stack.Screen name="Home" component={HomeScreen} />
-        <Stack.Screen name="Story" component={StoryScreen} />
-        <Stack.Screen name="Settings" component={SettingsScreen} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <SettingsProvider>
+      <NavigationContainer>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Home" component={HomeScreen} />
+          <Stack.Screen name="Story" component={StoryScreen} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </SettingsProvider>
   );
 }

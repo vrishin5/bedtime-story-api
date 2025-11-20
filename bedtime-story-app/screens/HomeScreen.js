@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TextInput,
-  Button,
   StyleSheet,
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -12,20 +11,20 @@ import {
   Platform,
   ScrollView,
   SafeAreaView,
+  TouchableOpacity,
 } from "react-native";
 
-import { Picker } from "@react-native-picker/picker";
 import axios from "axios";
-
 import Background from "../components/Background";
 import AppLogo from "../components/AppLogo";
+import { useSettings } from "../context/SettingsContext";
 import { colors, typography } from "./theme";
 
 const BASE_URL = "https://bedtime-story-api-tdhc.onrender.com";
 
 export default function HomeScreen({ navigation }) {
-  const [age, setAge] = useState("5–8");
-  const [duration, setDuration] = useState("5–10 minutes");
+  const { childAge, storyLength } = useSettings();
+
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -42,81 +41,65 @@ export default function HomeScreen({ navigation }) {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
+              {/* Logo */}
               <AppLogo />
 
               <Text style={styles.subtitle}>
                 Create magical bedtime stories for your little dreamer ✨
               </Text>
 
-              <Text style={styles.label}>Child’s Age</Text>
-              <View style={styles.pickerWrap}>
-                <Picker
-                  selectedValue={age}
-                  onValueChange={setAge}
-                  dropdownIconColor={colors.text}
-                  style={styles.picker}
-                >
-                  <Picker.Item label="3–5" value="3–5" />
-                  <Picker.Item label="5–8" value="5–8" />
-                  <Picker.Item label="8–10" value="8–10" />
-                </Picker>
-              </View>
+              {/* READ-ONLY SETTINGS */}
+              <Text style={styles.selectedInfo}>🌟 Age: {childAge}</Text>
+              <Text style={styles.selectedInfo}>⏱ Length: {storyLength}</Text>
 
-              <Text style={styles.label}>Story Length</Text>
-              <View style={styles.pickerWrap}>
-                <Picker
-                  selectedValue={duration}
-                  onValueChange={setDuration}
-                  dropdownIconColor={colors.text}
-                  style={styles.picker}
-                >
-                  <Picker.Item label="5–10 minutes" value="5–10 minutes" />
-                  <Picker.Item label="15–30 minutes" value="15–30 minutes" />
-                  <Picker.Item label="30–60 minutes" value="30–60 minutes" />
-                </Picker>
-              </View>
-
+              {/* STORY INPUT */}
               <TextInput
                 style={styles.input}
-                placeholder="Describe your story idea… You may include a main character’s name or theme!"
+                placeholder="Describe your story idea… You may include a main character’s name, theme, or world!"
                 placeholderTextColor={colors.subtext}
                 value={prompt}
                 onChangeText={setPrompt}
                 multiline
               />
 
+              {/* GENERATE BUTTON */}
               {loading ? (
                 <ActivityIndicator size="large" color={colors.primary} />
               ) : (
-                <Button
-                  title="🪄 Generate Story"
-                  color={colors.primary}
+                <TouchableOpacity
+                  style={styles.generateBtn}
                   onPress={async () => {
                     if (!prompt.trim()) return;
+
                     try {
                       setLoading(true);
+
                       const res = await axios.post(`${BASE_URL}/generate_story`, {
                         user_input: prompt,
-                        child_age: age,
-                        story_duration: duration,
+                        child_age: childAge,
+                        story_duration: storyLength,
                       });
+
                       navigation.navigate("Story", { story: res.data.story });
                     } catch (e) {
                       console.error(e);
-                      alert("Failed to generate story. Please try again.");
+                      alert("Failed to generate story.");
                     } finally {
                       setLoading(false);
                     }
                   }}
-                />
+                >
+                  <Text style={styles.generateBtnText}>🪄 Generate Story</Text>
+                </TouchableOpacity>
               )}
 
-              <View style={{ height: 25 }} />
-              <Button
-                title="⚙️ Settings"
-                color={colors.primary}
+              {/* SETTINGS BUTTON — FIXED */}
+              <TouchableOpacity
+                style={styles.settingsBtn}
                 onPress={() => navigation.navigate("Settings")}
-              />
+              >
+                <Text style={styles.settingsBtnText}>⚙️ Settings</Text>
+              </TouchableOpacity>
 
               <View style={{ height: 40 }} />
             </ScrollView>
@@ -129,48 +112,65 @@ export default function HomeScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   inner: {
-    padding: 20,
-    paddingBottom: 50,
+    padding: 22,
+    paddingBottom: 60,
   },
   subtitle: {
     color: colors.text,
     fontFamily: typography.fontFamily,
     fontSize: typography.subtitle,
     textAlign: "center",
-    marginBottom: 25,
+    marginBottom: 20,
     opacity: 0.9,
   },
-  label: {
+  selectedInfo: {
     color: colors.text,
     fontFamily: typography.fontFamily,
-    marginTop: 14,
+    fontSize: 20,
     marginBottom: 6,
-    fontSize: typography.body,
-  },
-  pickerWrap: {
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: "hidden",
-    marginBottom: 12,
-  },
-  picker: {
-    color: colors.text,
-    fontFamily: typography.fontFamily,
-    height: 52,
+    textAlign: "center",
   },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.card,
+    backgroundColor: "rgba(255,255,255,0.12)",
     color: colors.text,
     padding: 14,
     marginVertical: 20,
     minHeight: 130,
-    borderRadius: 16,
+    borderRadius: 14,
     fontFamily: typography.fontFamily,
     fontSize: typography.body,
+    lineHeight: typography.lineHeight,
     textAlignVertical: "top",
+  },
+
+  /* GENERATE BUTTON */
+  generateBtn: {
+    backgroundColor: colors.primary,
+    paddingVertical: 15,
+    borderRadius: 14,
+    alignItems: "center",
+    marginBottom: 18,
+  },
+  generateBtnText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#000",
+  },
+
+  /* SETTINGS BUTTON — FIXED */
+  settingsBtn: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: "center",
+  },
+  settingsBtnText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#000",
   },
 });
