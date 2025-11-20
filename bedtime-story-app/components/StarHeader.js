@@ -1,19 +1,23 @@
 import React from "react";
-import { View, StyleSheet } from "react-native";
-import LottieView from "lottie-react-native";
+import { View, StyleSheet, Image } from "react-native";
 
 export default function StarHeader() {
   return (
     <View style={styles.wrap}>
-      <LottieView
-        source={require("../assets/lottie/moon-stars.json")}
-        autoPlay
-        loop
-        style={{ width: 200, height: 200, opacity: 0.9 }}
+      <Image
+        source={require("../assets/images/moon-stars.png")}
+        style={styles.image}
+        resizeMode="contain"
       />
     </View>
   );
 }
+
 const styles = StyleSheet.create({
-  wrap: { alignItems: "center", marginTop: 16, marginBottom: -16 },
+  wrap: { alignItems: "center", marginTop: 20, marginBottom: -10 },
+  image: {
+    width: 200,
+    height: 200,
+    opacity: 0.95,   // soft glow effect
+  },
 });
