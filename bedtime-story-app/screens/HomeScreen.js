@@ -13,10 +13,12 @@ import {
   ScrollView,
   SafeAreaView,
 } from "react-native";
+
 import { Picker } from "@react-native-picker/picker";
 import axios from "axios";
+
 import Background from "../components/Background";
-import StarHeader from "../components/StarHeader";
+import AppLogo from "../components/AppLogo";
 import { colors, typography } from "./theme";
 
 const BASE_URL = "https://bedtime-story-api-tdhc.onrender.com";
@@ -40,12 +42,12 @@ export default function HomeScreen({ navigation }) {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              {/* 🌙 Animated Header */}
-              <StarHeader />
+              <AppLogo />
 
-              <Text style={styles.title}>🌙 Bedtime Story Generator</Text>
+              <Text style={styles.subtitle}>
+                Create magical bedtime stories for your little dreamer ✨
+              </Text>
 
-              {/* AGE PICKER */}
               <Text style={styles.label}>Child’s Age</Text>
               <View style={styles.pickerWrap}>
                 <Picker
@@ -60,7 +62,6 @@ export default function HomeScreen({ navigation }) {
                 </Picker>
               </View>
 
-              {/* STORY LENGTH PICKER */}
               <Text style={styles.label}>Story Length</Text>
               <View style={styles.pickerWrap}>
                 <Picker
@@ -75,17 +76,15 @@ export default function HomeScreen({ navigation }) {
                 </Picker>
               </View>
 
-              {/* STORY PROMPT */}
               <TextInput
                 style={styles.input}
-                placeholder="Describe your story idea or pick a category (fantasy, fairy tales, adventure, friendship, animals, courage, comedy)…"
+                placeholder="Describe your story idea… You may include a main character’s name or theme!"
                 placeholderTextColor={colors.subtext}
                 value={prompt}
                 onChangeText={setPrompt}
                 multiline
               />
 
-              {/* GENERATE BUTTON */}
               {loading ? (
                 <ActivityIndicator size="large" color={colors.primary} />
               ) : (
@@ -112,8 +111,7 @@ export default function HomeScreen({ navigation }) {
                 />
               )}
 
-              {/* SETTINGS BUTTON */}
-              <View style={{ height: 24 }} />
+              <View style={{ height: 25 }} />
               <Button
                 title="⚙️ Settings"
                 color={colors.primary}
@@ -130,37 +128,49 @@ export default function HomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  // No justifyContent: "center" so items don't get pushed off-screen
   inner: {
     padding: 20,
-    paddingBottom: 50, // ensures last buttons remain visible
+    paddingBottom: 50,
   },
-  title: {
+  subtitle: {
     color: colors.text,
-    fontSize: typography.title,
-    fontWeight: "700",
+    fontFamily: typography.fontFamily,
+    fontSize: typography.subtitle,
     textAlign: "center",
-    marginBottom: 8,
+    marginBottom: 25,
+    opacity: 0.9,
   },
-  label: { color: colors.subtext, marginTop: 14, marginBottom: 6 },
+  label: {
+    color: colors.text,
+    fontFamily: typography.fontFamily,
+    marginTop: 14,
+    marginBottom: 6,
+    fontSize: typography.body,
+  },
   pickerWrap: {
     backgroundColor: colors.card,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
     overflow: "hidden",
-    marginBottom: 10,
+    marginBottom: 12,
   },
-  picker: { color: colors.text },
+  picker: {
+    color: colors.text,
+    fontFamily: typography.fontFamily,
+    height: 52,
+  },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
     color: colors.text,
-    padding: 12,
-    marginVertical: 16,
-    minHeight: 110,
+    padding: 14,
+    marginVertical: 20,
+    minHeight: 130,
+    borderRadius: 16,
+    fontFamily: typography.fontFamily,
+    fontSize: typography.body,
     textAlignVertical: "top",
-    borderRadius: 12,
   },
 });

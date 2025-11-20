@@ -1,146 +1,150 @@
-import React, { useState } from "react";
-import { View, Text, ScrollView, Button, StyleSheet, ActivityIndicator } from "react-native";
+import React, { useState, useEffect, useRef } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  SafeAreaView,
+  TouchableOpacity,
+  ActivityIndicator,
+} from "react-native";
 import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system/legacy";
 import axios from "axios";
-import { encode } from "base64-arraybuffer";
+
+import Background from "../components/Background";
+import { colors, typography } from "./theme";
 
 const BASE_URL = "https://bedtime-story-api-tdhc.onrender.com";
 
 export default function StoryScreen({ route, navigation }) {
   const { story } = route.params;
+  const [loadingAudio, setLoadingAudio] = useState(false);
   const [sound, setSound] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const [paused, setPaused] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
 
-  // ⭐ NEW: Save audio file so we don't fetch again
-  const [audioUri, setAudioUri] = useState(null);
-
-  const playOrPauseAudio = async () => {
+  async function playAudio() {
     try {
-      // ⭐ If we already have an audio file, skip the API call
-      if (audioUri && !sound) {
-        const { sound: newSound } = await Audio.Sound.createAsync({ uri: audioUri });
-        setSound(newSound);
-        setPlaying(true);
-        await newSound.playAsync();
-        return;
-      }
-
-      // ⭐ If sound exists (pause/resume logic)
-      if (sound) {
-        if (playing && !paused) {
-          await sound.pauseAsync();
-          setPaused(true);
-          return;
-        } else if (paused) {
-          await sound.playAsync();
-          setPaused(false);
-          return;
-        }
-      }
-
-      setLoading(true);
-
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
+      setLoadingAudio(true);
+      const response = await axios.post(`${BASE_URL}/tts`, {
+        story_text: story,
       });
 
-      let fileUri = audioUri;
+      const { uri } = response.data;
 
-      // ⭐ If we don't have audio saved yet, fetch it ONCE
-      if (!fileUri) {
-        const res = await axios.post(
-          `${BASE_URL}/tts`,
-          { story_text: story },
-          { responseType: "arraybuffer" }
-        );
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: true }
+      );
 
-        const base64Audio = encode(res.data);
-
-        fileUri = FileSystem.cacheDirectory + "story.mp3";
-        await FileSystem.writeAsStringAsync(fileUri, base64Audio, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-
-        // ⭐ Save file path so next play is instant
-        setAudioUri(fileUri);
-      }
-
-      // Load and play local file
-      const { sound: newSound } = await Audio.Sound.createAsync({ uri: fileUri });
       setSound(newSound);
-      setPlaying(true);
-      setPaused(false);
-      setLoading(false);
-
-      await newSound.playAsync();
+      setIsPlaying(true);
 
       newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.didJustFinish) {
-          setPlaying(false);
-          setPaused(false);
-        }
+        if (status.didJustFinish) setIsPlaying(false);
       });
-    } catch (err) {
-      setLoading(false);
-      console.error("Error playing audio:", err);
-      alert("Unable to play audio.");
+    } catch (e) {
+      console.error(e);
+      alert("Could not load audio.");
+    } finally {
+      setLoadingAudio(false);
     }
-  };
+  }
 
-  const stopAudio = async () => {
-    if (sound) {
-      await sound.stopAsync();
-      setPlaying(false);
-      setPaused(false);
+  async function togglePlayPause() {
+    if (!sound) return;
+    const status = await sound.getStatusAsync();
+
+    if (status.isPlaying) {
+      await sound.pauseAsync();
+      setIsPlaying(false);
+    } else {
+      await sound.playAsync();
+      setIsPlaying(true);
     }
-  };
+  }
+
+  useEffect(() => {
+    return sound
+      ? () => {
+          sound.unloadAsync();
+        }
+      : undefined;
+  }, [sound]);
 
   return (
-    <View style={{ flex: 1, padding: 20 }}>
-      <Text style={styles.title}>📖 Your Bedtime Story</Text>
+    <Background>
+      <SafeAreaView style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={styles.inner}>
+          <Text style={styles.header}>Your Story ✨</Text>
 
-      <View style={{ alignItems: "center", marginBottom: 15 }}>
-        {loading ? (
-          <ActivityIndicator size="large" color="#6C63FF" />
-        ) : (
-          <>
-            <Button
-              title={
-                playing
-                  ? paused
-                    ? "▶️ Resume Story"
-                    : "⏸️ Pause Story"
-                  : "🎧 Listen to Story"
-              }
-              onPress={playOrPauseAudio}
-              color="#6C63FF"
-            />
+          <Text style={styles.story}>{story}</Text>
 
-            {playing && (
-              <View style={{ marginTop: 10 }}>
-                <Button title="⏹️ Stop" onPress={stopAudio} color="#E57373" />
-              </View>
+          <View style={styles.buttonWrap}>
+            {loadingAudio ? (
+              <ActivityIndicator size="large" color={colors.primary} />
+            ) : (
+              <TouchableOpacity style={styles.playBtn} onPress={sound ? togglePlayPause : playAudio}>
+                <Text style={styles.playBtnText}>
+                  {sound ? (isPlaying ? "⏸ Pause" : "▶️ Play") : "🔊 Listen to Story"}
+                </Text>
+              </TouchableOpacity>
             )}
-          </>
-        )}
-      </View>
 
-      <ScrollView style={{ flex: 1 }}>
-        <Text style={styles.storyText}>{story}</Text>
-      </ScrollView>
-
-      <View style={{ marginBottom: 20 }}>
-        <Button title="🔙 Back to Home" onPress={() => navigation.navigate("Home")} />
-      </View>
-    </View>
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.backBtnText}>← Back</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </Background>
   );
 }
 
 const styles = StyleSheet.create({
-  title: { textAlign: "center", fontSize: 24, fontWeight: "bold", marginBottom: 10 },
-  storyText: { fontSize: 16, lineHeight: 24, color: "#333" },
+  inner: {
+    padding: 22,
+    paddingBottom: 50,
+  },
+  header: {
+    color: colors.text,
+    fontFamily: typography.fontFamily,
+    fontSize: 32,
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  story: {
+    color: colors.text,
+    fontFamily: typography.fontFamily,
+    fontSize: typography.body,
+    lineHeight: typography.lineHeight,
+    marginBottom: 40,
+  },
+  buttonWrap: {
+    alignItems: "center",
+    gap: 18,
+  },
+  playBtn: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    width: "80%",
+  },
+  playBtnText: {
+    textAlign: "center",
+    fontSize: 20,
+    color: "#000",
+    fontWeight: "600",
+  },
+  backBtn: {
+    paddingVertical: 10,
+  },
+  backBtnText: {
+    color: colors.text,
+    fontFamily: typography.fontFamily,
+    fontSize: 18,
+  },
 });

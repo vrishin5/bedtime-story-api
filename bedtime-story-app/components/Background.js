@@ -7,12 +7,15 @@ export default function Background({ children }) {
   return (
     <LinearGradient
       colors={[colors.bgTop, colors.bgBottom]}
-      style={styles.fill}
       start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
+      end={{ x: 0, y: 1 }}
+      style={styles.fill}
     >
       {children}
     </LinearGradient>
   );
 }
-const styles = StyleSheet.create({ fill: { flex: 1 } });
+
+const styles = StyleSheet.create({
+  fill: { flex: 1 },
+});
