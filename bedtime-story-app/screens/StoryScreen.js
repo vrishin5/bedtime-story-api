@@ -10,66 +10,62 @@ import {
 } from "react-native";
 import { Audio } from "expo-av";
 import axios from "axios";
+
 import Background from "../components/Background";
 import { colors, typography } from "./theme";
+import { useSettings } from "../context/SettingsContext";
 
 const BASE_URL = "https://bedtime-story-api-tdhc.onrender.com";
 
 export default function StoryScreen({ route, navigation }) {
   const story = route?.params?.story;
 
-  // If story is missing, show a safe fallback screen instead of crashing
-  if (!story) {
-    return (
-      <Background>
-        <SafeAreaView style={styles.centered}>
-          <Text style={styles.errorMsg}>
-            Story not found. Please generate a new story.
-          </Text>
-
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => navigation.navigate("Home")}
-          >
-            <Text style={styles.backBtnText}>← Back to Home</Text>
-          </TouchableOpacity>
-        </SafeAreaView>
-      </Background>
-    );
-  }
+  const { ambienceEnabled, ambienceVolume } = useSettings();
 
   const [sound, setSound] = useState(null);
+  const [ambienceSound, setAmbienceSound] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [loadingAudio, setLoadingAudio] = useState(false);
 
+  // Load ambience on mount
   useEffect(() => {
-    Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      allowsRecordingIOS: false,
-      staysActiveInBackground: false,
-    });
+    let mounted = true;
+
+    const loadAmbience = async () => {
+      if (!ambienceEnabled) return;
+
+      const { sound: amb } = await Audio.Sound.createAsync(
+        require("../assets/audio/night_ambience.mp3")
+      );
+
+      if (!mounted) return;
+
+      amb.setVolumeAsync(ambienceVolume);
+      amb.setIsLoopingAsync(true);
+      amb.playAsync();
+
+      setAmbienceSound(amb);
+    };
+
+    loadAmbience();
 
     return () => {
+      mounted = false;
+      if (ambienceSound) ambienceSound.unloadAsync();
       if (sound) sound.unloadAsync();
     };
-  }, [sound]);
+  }, [ambienceEnabled, ambienceVolume]);
 
   const startPlayback = async () => {
     try {
       setLoadingAudio(true);
-
-      // 1. Request TTS file
-      const res = await axios.post(`${BASE_URL}/tts`, {
-        story_text: story,
-      });
+      const res = await axios.post(`${BASE_URL}/tts`, { story_text: story });
 
       const filename = res.data?.filename;
-      if (!filename) throw new Error("No filename returned from backend.");
+      if (!filename) throw new Error("No filename returned");
 
-      // 2. Build URL
       const audioUrl = `${BASE_URL}/audio/${filename}`;
 
-      // 3. Load and play it
       const { sound: newSound } = await Audio.Sound.createAsync(
         { uri: audioUrl },
         { shouldPlay: true }
@@ -78,24 +74,19 @@ export default function StoryScreen({ route, navigation }) {
       setSound(newSound);
       setIsPlaying(true);
 
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.didJustFinish) {
-          setIsPlaying(false);
-        }
+      newSound.setOnPlaybackStatusUpdate((s) => {
+        if (s.didJustFinish) setIsPlaying(false);
       });
-    } catch (err) {
-      console.log("Audio error:", err);
-      alert("Could not load the audio.");
+    } catch (e) {
+      console.log(e);
+      alert("Could not load audio.");
     } finally {
       setLoadingAudio(false);
     }
   };
 
   const togglePlayPause = async () => {
-    if (!sound) {
-      await startPlayback();
-      return;
-    }
+    if (!sound) return startPlayback();
 
     const status = await sound.getStatusAsync();
 
@@ -112,12 +103,11 @@ export default function StoryScreen({ route, navigation }) {
     <Background>
       <SafeAreaView style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.inner}>
-          <Text style={styles.header}>Your Story ✨</Text>
-          <Text style={styles.story}>{story}</Text>
 
-          <View style={styles.buttonWrap}>
+          {/* LISTEN BUTTON AT TOP */}
+          <View style={{ alignItems: "center", marginBottom: 22 }}>
             {loadingAudio ? (
-              <ActivityIndicator color={colors.primary} size="large" />
+              <ActivityIndicator size="large" color={colors.primary} />
             ) : (
               <TouchableOpacity style={styles.playBtn} onPress={togglePlayPause}>
                 <Text style={styles.playBtnText}>
@@ -125,14 +115,17 @@ export default function StoryScreen({ route, navigation }) {
                 </Text>
               </TouchableOpacity>
             )}
-
-            <TouchableOpacity
-              style={styles.backBtn}
-              onPress={() => navigation.goBack()}
-            >
-              <Text style={styles.backBtnText}>← Back</Text>
-            </TouchableOpacity>
           </View>
+
+          <Text style={styles.header}>Your Story ✨</Text>
+          <Text style={styles.story}>{story}</Text>
+
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backBtnText}>← Back</Text>
+          </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
     </Background>
@@ -140,29 +133,13 @@ export default function StoryScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  inner: {
-    padding: 22,
-    paddingBottom: 60,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  errorMsg: {
-    color: colors.text,
-    fontFamily: typography.fontFamily,
-    fontSize: 20,
-    marginBottom: 20,
-    textAlign: "center",
-  },
+  inner: { padding: 22, paddingBottom: 60 },
   header: {
     color: colors.text,
     fontFamily: typography.fontFamily,
     fontSize: 32,
     textAlign: "center",
-    marginBottom: 20,
+    marginBottom: 16,
   },
   story: {
     color: colors.text,
@@ -171,31 +148,22 @@ const styles = StyleSheet.create({
     lineHeight: typography.lineHeight,
     marginBottom: 40,
   },
-  buttonWrap: {
-    alignItems: "center",
-    gap: 18,
-  },
   playBtn: {
     backgroundColor: colors.primary,
-    paddingVertical: 14,
+    paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 14,
-    width: "80%",
   },
   playBtnText: {
+    fontSize: 20,
     color: "#000",
     fontFamily: typography.fontFamily,
-    fontSize: 20,
     fontWeight: "600",
-    textAlign: "center",
   },
-  backBtn: {
-    paddingVertical: 10,
-  },
+  backBtn: { alignItems: "center", marginTop: 20 },
   backBtnText: {
     color: colors.text,
-    fontFamily: typography.fontFamily,
     fontSize: 20,
-    textAlign: "center",
+    fontFamily: typography.fontFamily,
   },
 });
