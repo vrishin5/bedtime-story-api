@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -20,8 +20,7 @@ const BASE_URL = "https://bedtime-story-api-tdhc.onrender.com";
 
 export default function StoryScreen({ route, navigation }) {
   const story = route?.params?.story;
-
-  const { ambienceEnabled, ambienceVolume } = useSettings();
+  const { ambienceEnabled, ambienceVolume, voice } = useSettings();
 
   const [sound, setSound] = useState(null);
   const [ambienceSound, setAmbienceSound] = useState(null);
@@ -30,10 +29,15 @@ export default function StoryScreen({ route, navigation }) {
   const [loadingAudio, setLoadingAudio] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
 
-  // SCRUBBING STATE
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
   const [isScrubbing, setIsScrubbing] = useState(false);
+
+  // Split story into words for highlighting
+  const words = useMemo(() => story?.split(/\s+/) ?? [], [story]);
+  const totalWords = words.length || 1;
+  const progress = duration > 0 ? position / duration : 0;
+  const highlightedCount = Math.floor(progress * totalWords);
 
   if (!story) {
     return (
@@ -53,7 +57,7 @@ export default function StoryScreen({ route, navigation }) {
     );
   }
 
-  // Load ambience
+  // Load ambience only when enabled
   useEffect(() => {
     let mounted = true;
 
@@ -66,9 +70,9 @@ export default function StoryScreen({ route, navigation }) {
 
       if (!mounted) return;
 
-      amb.setVolumeAsync(ambienceVolume);
-      amb.setIsLoopingAsync(true);
-      amb.playAsync();
+      await amb.setVolumeAsync(ambienceVolume);
+      await amb.setIsLoopingAsync(true);
+      await amb.playAsync();
 
       setAmbienceSound(amb);
     };
@@ -82,7 +86,6 @@ export default function StoryScreen({ route, navigation }) {
     };
   }, [ambienceEnabled, ambienceVolume]);
 
-  // Format seconds → mm:ss
   const formatTime = (ms) => {
     if (!ms) return "0:00";
     const totalSec = Math.floor(ms / 1000);
@@ -96,8 +99,10 @@ export default function StoryScreen({ route, navigation }) {
       setLoadingAudio(true);
       setHasStarted(true);
 
+      // Ask backend to generate TTS using selected voice
       const res = await axios.post(`${BASE_URL}/tts`, {
         story_text: story,
+        voice: voice, // "sage" or "verse"
       });
 
       const filename = res.data?.filename;
@@ -119,10 +124,12 @@ export default function StoryScreen({ route, navigation }) {
         if (!isScrubbing) setPosition(status.positionMillis);
         setDuration(status.durationMillis);
 
-        if (status.didJustFinish) setIsPlaying(false);
+        if (status.didJustFinish) {
+          setIsPlaying(false);
+        }
       });
     } catch (e) {
-      console.log(e);
+      console.log("Audio error:", e);
       alert("Could not load audio.");
     } finally {
       setLoadingAudio(false);
@@ -152,24 +159,24 @@ export default function StoryScreen({ route, navigation }) {
     startPlayback();
   };
 
-  // SCRUBBING: user drags slider
-  const onScrub = async (value) => {
-    setIsScrubbing(true); // stop auto-updating position
+  // Scrubbing
+  const onScrub = (value) => {
+    setIsScrubbing(true);
     setPosition(value);
   };
 
-  // SCRUBBING: user releases slider
   const onScrubComplete = async (value) => {
     setIsScrubbing(false);
-    if (sound) await sound.setPositionAsync(value);
+    if (sound) {
+      await sound.setPositionAsync(value);
+    }
   };
 
   return (
     <Background>
       <SafeAreaView style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.inner}>
-
-          {/* TOP BACK BUTTON */}
+          {/* Back button at top */}
           <TouchableOpacity
             style={styles.backBtnTop}
             onPress={() => navigation.goBack()}
@@ -177,7 +184,7 @@ export default function StoryScreen({ route, navigation }) {
             <Text style={styles.backBtnText}>← Back</Text>
           </TouchableOpacity>
 
-          {/* LISTEN / AFTER-AUDIO CONTROLS */}
+          {/* Audio controls section */}
           <View style={{ alignItems: "center", marginBottom: 22 }}>
             {!hasStarted ? (
               loadingAudio ? (
@@ -189,11 +196,11 @@ export default function StoryScreen({ route, navigation }) {
               )
             ) : (
               <>
-                {/* SCRUBBING SLIDER */}
+                {/* Scrubbing slider */}
                 <Slider
-                  style={{ width: 250, marginBottom: 8 }}
+                  style={{ width: 260, marginBottom: 8 }}
                   minimumValue={0}
-                  maximumValue={duration}
+                  maximumValue={duration || 1}
                   value={position}
                   minimumTrackTintColor={colors.primary}
                   maximumTrackTintColor="#666"
@@ -202,12 +209,11 @@ export default function StoryScreen({ route, navigation }) {
                   onSlidingComplete={onScrubComplete}
                 />
 
-                {/* TIME DISPLAY */}
                 <Text style={styles.timeText}>
                   {formatTime(position)} / {formatTime(duration)}
                 </Text>
 
-                {/* CONTROL BUTTONS */}
+                {/* Control buttons */}
                 <View style={styles.controlsRow}>
                   <TouchableOpacity
                     style={styles.controlBtn}
@@ -237,7 +243,21 @@ export default function StoryScreen({ route, navigation }) {
           </View>
 
           <Text style={styles.header}>Your Story ✨</Text>
-          <Text style={styles.story}>{story}</Text>
+
+          {/* Highlighted story text */}
+          <Text style={styles.story}>
+            {words.map((word, idx) => {
+              const isHighlighted = idx <= highlightedCount;
+              return (
+                <Text
+                  key={idx}
+                  style={isHighlighted ? styles.highlightWord : styles.word}
+                >
+                  {word + " "}
+                </Text>
+              );
+            })}
+          </Text>
         </ScrollView>
       </SafeAreaView>
     </Background>
@@ -245,8 +265,23 @@ export default function StoryScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  inner: { padding: 22, paddingBottom: 60 },
-
+  inner: {
+    padding: 22,
+    paddingBottom: 60,
+  },
+  centered: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  errorMsg: {
+    color: colors.text,
+    fontFamily: typography.fontFamily,
+    fontSize: 20,
+    marginBottom: 20,
+    textAlign: "center",
+  },
   backBtnTop: {
     alignSelf: "flex-start",
     paddingVertical: 8,
@@ -254,10 +289,9 @@ const styles = StyleSheet.create({
   },
   backBtnText: {
     color: colors.text,
-    fontSize: 20,
     fontFamily: typography.fontFamily,
+    fontSize: 20,
   },
-
   header: {
     color: colors.text,
     fontFamily: typography.fontFamily,
@@ -265,7 +299,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 16,
   },
-
   story: {
     color: colors.text,
     fontFamily: typography.fontFamily,
@@ -274,7 +307,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 40,
   },
-
   playBtn: {
     backgroundColor: colors.primary,
     paddingVertical: 12,
@@ -287,7 +319,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily,
     fontWeight: "600",
   },
-
   controlsRow: {
     flexDirection: "row",
     gap: 16,
@@ -304,10 +335,17 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
   },
-
   timeText: {
     color: colors.text,
     fontFamily: typography.fontFamily,
-    marginBottom: 8,
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  word: {
+    color: colors.text,
+  },
+  highlightWord: {
+    color: colors.primary,
+    fontWeight: "600",
   },
 });

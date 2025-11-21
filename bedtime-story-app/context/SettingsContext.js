@@ -6,9 +6,12 @@ export function SettingsProvider({ children }) {
   const [childAge, setChildAge] = useState("5–8");
   const [storyLength, setStoryLength] = useState("5–10 minutes");
 
-  // NEW: background ambience settings
+  // Night ambience sound settings
   const [ambienceEnabled, setAmbienceEnabled] = useState(true);
-  const [ambienceVolume, setAmbienceVolume] = useState(0.4); // 40% default
+  const [ambienceVolume, setAmbienceVolume] = useState(0.4); // 0–1
+
+  // Voice settings: "sage" (softer) and "verse" (storyteller)
+  const [voice, setVoice] = useState("sage");
 
   return (
     <SettingsContext.Provider
@@ -17,11 +20,12 @@ export function SettingsProvider({ children }) {
         storyLength,
         setChildAge,
         setStoryLength,
-
         ambienceEnabled,
-        ambienceVolume,
         setAmbienceEnabled,
+        ambienceVolume,
         setAmbienceVolume,
+        voice,
+        setVoice,
       }}
     >
       {children}
