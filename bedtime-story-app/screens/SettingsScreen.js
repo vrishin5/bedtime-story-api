@@ -1,167 +1,191 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   SafeAreaView,
   TouchableOpacity,
-  ActivityIndicator,
 } from "react-native";
-import { Audio } from "expo-av";
-import axios from "axios";
+
+import Modal from "react-native-modal";
 import Background from "../components/Background";
 import { colors, typography } from "./theme";
+import { useSettings } from "../context/SettingsContext";
 
-const BASE_URL = "https://bedtime-story-api-tdhc.onrender.com";
+export default function SettingsScreen({ navigation }) {
+  const { childAge, storyLength, setChildAge, setStoryLength } = useSettings();
 
-export default function StoryScreen({ route, navigation }) {
-  const { story } = route.params;
+  const [modalVisible, setModalVisible] = useState(false);
+  const [pickerType, setPickerType] = useState(null);
 
-  const [sound, setSound] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [loadingAudio, setLoadingAudio] = useState(false);
-
-  useEffect(() => {
-    Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      allowsRecordingIOS: false,
-      staysActiveInBackground: false,
-    });
-
-    return () => {
-      if (sound) sound.unloadAsync();
-    };
-  }, [sound]);
-
-  const startPlayback = async () => {
-    try {
-      setLoadingAudio(true);
-
-      // 1. Request TTS file
-      const res = await axios.post(`${BASE_URL}/tts`, {
-        story_text: story,
-      });
-
-      const filename = res.data?.filename;
-      if (!filename) throw new Error("No filename returned");
-
-      // 2. Build full URL
-      const audioUrl = `${BASE_URL}/audio/${filename}`;
-
-      // 3. Load the audio file
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: audioUrl },
-        { shouldPlay: true }
-      );
-
-      setSound(newSound);
-      setIsPlaying(true);
-
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.didJustFinish) {
-          setIsPlaying(false);
-        }
-      });
-    } catch (err) {
-      console.log("Audio error:", err);
-      alert("Could not load the audio.");
-    } finally {
-      setLoadingAudio(false);
-    }
+  const openPicker = (type) => {
+    setPickerType(type);
+    setModalVisible(true);
   };
 
-  const togglePlayPause = async () => {
-    if (!sound) {
-      await startPlayback();
-      return;
-    }
-
-    const status = await sound.getStatusAsync();
-
-    if (status.isPlaying) {
-      await sound.pauseAsync();
-      setIsPlaying(false);
-    } else {
-      await sound.playAsync();
-      setIsPlaying(true);
-    }
+  const getOptions = () => {
+    if (pickerType === "age") return ["3–5", "5–8", "8–10"];
+    if (pickerType === "length")
+      return ["5–10 minutes", "15–30 minutes", "30–60 minutes"];
+    return [];
   };
+
+  const handleSelect = (value) => {
+    if (pickerType === "age") {
+      setChildAge(value);
+    } else if (pickerType === "length") {
+      setStoryLength(value);
+    }
+    setModalVisible(false);
+  };
+
+  const modalTitle =
+    pickerType === "age" ? "Select Child’s Age" : "Select Story Length";
 
   return (
     <Background>
-      <SafeAreaView style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.inner}>
-          <Text style={styles.header}>Your Story ✨</Text>
-          <Text style={styles.story}>{story}</Text>
+      <SafeAreaView style={styles.container}>
+        <Text style={styles.header}>Settings ⚙️</Text>
 
-          <View style={styles.buttonWrap}>
-            {loadingAudio ? (
-              <ActivityIndicator color={colors.primary} size="large" />
-            ) : (
-              <TouchableOpacity style={styles.playBtn} onPress={togglePlayPause}>
-                <Text style={styles.playBtnText}>
-                  {isPlaying ? "⏸ Pause" : "🔊 Listen to Story"}
-                </Text>
+        {/* AGE SELECTOR */}
+        <TouchableOpacity
+          style={styles.selector}
+          onPress={() => openPicker("age")}
+        >
+          <Text style={styles.selectorLabel}>Child’s Age</Text>
+          <Text style={styles.selectorValue}>{childAge}</Text>
+        </TouchableOpacity>
+
+        {/* STORY LENGTH SELECTOR */}
+        <TouchableOpacity
+          style={styles.selector}
+          onPress={() => openPicker("length")}
+        >
+          <Text style={styles.selectorLabel}>Story Length</Text>
+          <Text style={styles.selectorValue}>{storyLength}</Text>
+        </TouchableOpacity>
+
+        {/* BACK BUTTON */}
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backText}>← Back</Text>
+        </TouchableOpacity>
+
+        {/* MODAL LIST SELECTION */}
+        <Modal
+          isVisible={modalVisible}
+          style={styles.modal}
+          onBackdropPress={() => setModalVisible(false)}
+          backdropOpacity={0.4}
+        >
+          <View style={styles.sheet}>
+            <Text style={styles.modalTitle}>{modalTitle}</Text>
+
+            {getOptions().map((option) => (
+              <TouchableOpacity
+                key={option}
+                style={styles.optionRow}
+                onPress={() => handleSelect(option)}
+              >
+                <Text style={styles.optionText}>{option}</Text>
               </TouchableOpacity>
-            )}
+            ))}
 
             <TouchableOpacity
-              style={styles.backBtn}
-              onPress={() => navigation.goBack()}
+              style={styles.cancelBtn}
+              onPress={() => setModalVisible(false)}
             >
-              <Text style={styles.backBtnText}>← Back</Text>
+              <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
+        </Modal>
       </SafeAreaView>
     </Background>
   );
 }
 
 const styles = StyleSheet.create({
-  inner: {
-    padding: 22,
-  },
+  container: { flex: 1, padding: 24 },
   header: {
     color: colors.text,
     fontFamily: typography.fontFamily,
-    fontSize: 32,
-    marginBottom: 20,
+    fontSize: 34,
     textAlign: "center",
+    marginBottom: 28,
   },
-  story: {
+  selector: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  selectorLabel: {
+    color: colors.subtext,
+    fontFamily: typography.fontFamily,
+    fontSize: 16,
+  },
+  selectorValue: {
     color: colors.text,
     fontFamily: typography.fontFamily,
-    fontSize: typography.body,
-    lineHeight: typography.lineHeight,
-    marginBottom: 40,
-  },
-  buttonWrap: {
-    alignItems: "center",
-    gap: 18,
-    marginBottom: 40,
-  },
-  playBtn: {
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 14,
-    width: "80%",
-  },
-  playBtnText: {
-    textAlign: "center",
-    color: "#000",
-    fontFamily: typography.fontFamily,
-    fontSize: 20,
-    fontWeight: "600",
+    fontSize: 22,
+    marginTop: 4,
   },
   backBtn: {
-    paddingVertical: 10,
+    marginTop: 40,
+    alignItems: "center",
   },
-  backBtnText: {
+  backText: {
+    color: colors.text,
+    fontFamily: typography.fontFamily,
+    fontSize: 22,
+  },
+
+  // Modal
+  modal: {
+    justifyContent: "flex-end",
+    margin: 0,
+  },
+  sheet: {
+    backgroundColor: "#2A1A55",
+    paddingTop: 18,
+    paddingBottom: 24,
+    paddingHorizontal: 20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalTitle: {
     color: colors.text,
     fontFamily: typography.fontFamily,
     fontSize: 20,
+    textAlign: "center",
+    marginBottom: 14,
+  },
+  optionRow: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.12)",
+  },
+  optionText: {
+    color: colors.text,
+    fontFamily: typography.fontFamily,
+    fontSize: 20,
+    textAlign: "center",
+  },
+  cancelBtn: {
+    marginTop: 12,
+    paddingVertical: 10,
+  },
+  cancelText: {
+    color: colors.primary,
+    fontFamily: typography.fontFamily,
+    fontSize: 20,
+    textAlign: "center",
   },
 });
